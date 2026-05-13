@@ -1,0 +1,2 @@
+maxWagonCapacity=50
+trackCount=2
