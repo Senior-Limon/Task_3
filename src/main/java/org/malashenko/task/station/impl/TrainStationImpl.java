@@ -2,81 +2,112 @@ package org.malashenko.task.station.impl;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.malashenko.task.config.StationConfig;
 import org.malashenko.task.model.Train;
-import org.malashenko.task.singleton.StationConfig;
+import org.malashenko.task.station.Track;
 import org.malashenko.task.station.TrainStation;
-import org.malashenko.task.util.impl.DataLoaderImpl;
 
-import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class TrainStationImpl implements TrainStation {
+    private static final Logger logger = LogManager.getLogger(TrainStationImpl.class);
 
-    private static final Logger log = LogManager.getLogger(TrainStationImpl.class);
+    private static final AtomicReference<TrainStationImpl> INSTANCE = new AtomicReference<>();
 
-    private final int maxTracks;
-    private int availableTracks;
+    private final Queue<Track> availableTracks;
     private final int maxWagonCapacity;
     private int currentWagonLoad;
+    private int servedTrainsCount;
 
+    private final ReentrantLock stationLock;
+    private final Condition stationCondition;
 
-    private final Queue<Train> waitingTrains = new LinkedList<>();
-
-    private final Lock lock = new ReentrantLock(true);
-
-    private final Condition trackAvailable = lock.newCondition();
-
-    public TrainStationImpl() {
-        StationConfig config = StationConfig.getInstance();
-        this.maxWagonCapacity = config.getMaxWagonCapacity();
-        this.maxTracks = config.getTrackCount();
-        this.availableTracks = maxTracks;
+    private TrainStationImpl(int trackCount, int maxWagonCapacity) {
+        this.availableTracks = new ConcurrentLinkedQueue<>();
+        this.maxWagonCapacity = maxWagonCapacity;
         this.currentWagonLoad = 0;
-        log.info("Station created with {} tracks, max wagon capacity: {}", maxTracks, maxWagonCapacity);
+        this.servedTrainsCount = 0;
+        this.stationLock = new ReentrantLock(true);
+        this.stationCondition = stationLock.newCondition();
+
+        for (int i = 1; i <= trackCount; i++) {
+            availableTracks.add(new Track(i));
+        }
+
+        logger.info("Station created: {} tracks, max capacity {} wagons", trackCount, maxWagonCapacity);
+        logStationStatus();
+    }
+
+    public static TrainStationImpl getInstance() {
+        TrainStationImpl instance = INSTANCE.get();
+        if (instance == null) {
+            StationConfig config = StationConfig.getInstance();
+            TrainStationImpl newInstance = new TrainStationImpl(
+                    config.getTrackCount(),
+                    config.getMaxWagonCapacity()
+            );
+            if (INSTANCE.compareAndSet(null, newInstance)) {
+                instance = newInstance;
+            } else {
+                instance = INSTANCE.get();
+            }
+        }
+        return instance;
     }
 
     @Override
-    public void acceptTrain(Train train) throws InterruptedException {
-        lock.lockInterruptibly();
+    public Track acquireTrack(Train train) throws InterruptedException {
+        stationLock.lockInterruptibly();
         try {
-            waitingTrains.add(train);
-            log.info("{} added to queue. Queue size: {}", train.getName(), waitingTrains.size());
+            logger.info("Train {} with {} wagons requests track", train.getName(), train.getWagonCount());
+            logStationStatus();
 
-            while (availableTracks == 0 ||
-                    (currentWagonLoad + train.getWagonCount() > maxWagonCapacity) ||
-                    !waitingTrains.peek().equals(train)) {
+            while (availableTracks.isEmpty() ||
+                    currentWagonLoad + train.getWagonCount() > maxWagonCapacity) {
 
-                log.info("{} waiting... (tracks left: {}, current load: {}/{}, first in queue: {})",
-                        train.getName(), availableTracks, currentWagonLoad, maxWagonCapacity,
-                        waitingTrains.peek() != null ? waitingTrains.peek().getName() : "none");
+                logger.info("Train {} waiting. Free tracks: {}, current load: {}/{}",
+                        train.getName(), availableTracks.size(), currentWagonLoad, maxWagonCapacity);
 
-                trackAvailable.await();
+                stationCondition.await();
             }
 
-            waitingTrains.poll();
-            availableTracks--;
+            Track track = availableTracks.poll();
             currentWagonLoad += train.getWagonCount();
-            log.info("{} entered track. Tracks left: {}, wagon load: {}/{}",
-                    train.getName(), availableTracks, currentWagonLoad, maxWagonCapacity);
+
+            logger.info("Train {} occupied {}. Station load: {}/{}",
+                    train.getName(), track, currentWagonLoad, maxWagonCapacity);
+            logStationStatus();
+
+            return track;
         } finally {
-            lock.unlock();
+            stationLock.unlock();
         }
     }
 
     @Override
-    public void leaveTrack(Train train) {
-        lock.lock();
+    public void releaseTrack(Track track, Train train) {
+        stationLock.lock();
         try {
-            availableTracks++;
+            availableTracks.add(track);
             currentWagonLoad -= train.getWagonCount();
-            log.info("{} left track. Tracks free: {}, wagon load: {}/{}",
-                    train.getName(), availableTracks, currentWagonLoad, maxWagonCapacity);
-            trackAvailable.signalAll();
+            servedTrainsCount++;
+
+            logger.info("Train {} released {}. Station load: {}/{}",
+                    train.getName(), track, currentWagonLoad, maxWagonCapacity);
+            logStationStatus();
+
+            stationCondition.signalAll();
         } finally {
-            lock.unlock();
+            stationLock.unlock();
         }
+    }
+
+    private void logStationStatus() {
+        logger.info("Station status - free tracks: {}, load: {}/{}, served: {}",
+                availableTracks.size(), currentWagonLoad, maxWagonCapacity, servedTrainsCount);
     }
 }

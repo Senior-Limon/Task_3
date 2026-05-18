@@ -3,18 +3,26 @@ package org.malashenko.task.model.state;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.malashenko.task.model.Train;
+import org.malashenko.task.model.state.LeavingState;
+
+import java.util.concurrent.TimeUnit;
 
 public class UnloadState implements TrainState {
-    private static final Logger log = LogManager.getLogger(UnloadState.class);
+    private static final Logger logger = LogManager.getLogger(UnloadState.class);
 
     @Override
-    public void handle(Train train) throws InterruptedException {
+    public void execute(Train train) throws InterruptedException {
+        logger.info("Train {} starts unloading {} wagons", train.getName(), train.getWagonCount());
 
-        log.info("{} UNLOADING", train.getName());
-        train.unload();
+        long unloadingTime = train.getWagonCount() * 200L;
+        TimeUnit.MILLISECONDS.sleep(unloadingTime);
+
+        logger.info("Train {} finished unloading", train.getName());
         train.setState(new LeavingState());
     }
 
     @Override
-    public String getName() { return "UNLOADING"; }
+    public String getStateName() {
+        return "UNLOADING";
+    }
 }

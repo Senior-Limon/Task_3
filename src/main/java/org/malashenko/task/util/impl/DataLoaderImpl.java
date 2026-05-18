@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class DataLoaderImpl {
-    private static final Logger log = LogManager.getLogger(DataLoaderImpl.class);
+    private static final Logger logger = LogManager.getLogger(DataLoaderImpl.class);
 
     private static final String CONFIG_FILE = "src/main/resources/config.txt";
     private static final String TRAINS_FILE = "src/main/resources/trains.txt";
@@ -28,15 +28,17 @@ public class DataLoaderImpl {
             List<String> lines = Files.readAllLines(Paths.get(CONFIG_FILE));
             for (String line : lines) {
                 line = line.trim();
-                if (line.isEmpty() || line.startsWith("#")) continue;
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
                 if (line.startsWith(key + "=")) {
                     int value = Integer.parseInt(line.split("=")[1].trim());
-                    log.debug("Loaded config: {} = {}", key, value);
+                    logger.debug("Loaded config: {} = {}", key, value);
                     return value;
                 }
             }
         } catch (IOException e) {
-            log.error("Failed to load config file: {}", CONFIG_FILE, e);
+            logger.error("Failed to load config file: {}", CONFIG_FILE, e);
             throw new RuntimeException("Failed to load config file", e);
         }
         throw new RuntimeException(key + " not found in config file");
@@ -51,12 +53,12 @@ public class DataLoaderImpl {
                         String[] parts = line.split(",");
                         String name = parts[0].trim();
                         int wagonCount = Integer.parseInt(parts[1].trim());
-                        log.debug("Loaded train: {} with {} wagons", name, wagonCount);
+                        logger.debug("Loaded train: {} with {} wagons", name, wagonCount);
                         return new TrainData(name, wagonCount);
                     })
                     .collect(Collectors.toList());
         } catch (IOException e) {
-            log.error("Failed to load trains file: {}", TRAINS_FILE, e);
+            logger.error("Failed to load trains file: {}", TRAINS_FILE, e);
             throw new RuntimeException("Failed to load trains file", e);
         }
     }

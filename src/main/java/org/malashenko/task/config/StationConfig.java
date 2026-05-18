@@ -1,12 +1,11 @@
-package org.malashenko.task.singleton;
+package org.malashenko.task.config;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.malashenko.task.util.DataLoader;
 import org.malashenko.task.util.impl.DataLoaderImpl;
 
 public class StationConfig {
-    private static final Logger log = LogManager.getLogger(StationConfig.class);
+    private static final Logger logger = LogManager.getLogger(StationConfig.class);
 
     private final int maxWagonCapacity;
     private final int trackCount;
@@ -14,12 +13,10 @@ public class StationConfig {
     private StationConfig() {
         this.maxWagonCapacity = DataLoaderImpl.loadMaxWagonCapacity();
         this.trackCount = DataLoaderImpl.loadTrackCount();
-        log.info("StationConfig loaded: maxWagonCapacity={}, trackCount={}",
-                maxWagonCapacity, trackCount);
+        logger.info("Configuration loaded: tracks={}, capacity={}", trackCount, maxWagonCapacity);
     }
 
-    /// ////////
-    private static class Holder {
+    private static final class Holder {
         private static final StationConfig INSTANCE = new StationConfig();
     }
 
